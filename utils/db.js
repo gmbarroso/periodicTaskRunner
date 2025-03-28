@@ -15,6 +15,20 @@ const pool = new Pool({
 pool.on('connect', () => logger.info('Database connection established.'));
 pool.on('error', (err) => logger.error('Error in database connection:', err));
 
+async function queryWithRetry(queryText, params, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await pool.query(queryText, params);
+    } catch (err) {
+      logger.error(`Query failed on attempt ${attempt} of ${retries}:`, err.message);
+      if (attempt === retries) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    }
+  }
+}
+
 module.exports = {
-  query: (text, params) => pool.query(text, params),
+  query: queryWithRetry,
 };

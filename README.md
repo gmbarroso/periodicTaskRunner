@@ -38,11 +38,11 @@ This project automates the periodic cleanup of PostgreSQL tables using Node.js. 
    - Create a `.env` file in the root directory.
    - Add the following variables:
      ```plaintext
-     DB_USER=your_database_user
-     DB_HOST=your_database_host
-     DB_NAME=your_database_name
-     DB_PASSWORD=your_database_password
-     DB_PORT=5432
+     DATABASE_USER=your_database_user
+     DATABASE_HOST=your_database_host
+     DATABASE_NAME=your_database_name
+     DATABASE_PASSWORD=your_database_password
+     DATABASE_PORT=5432
      ```
 
 4. Ensure the `.env` file is excluded from version control by checking the `.gitignore` file.

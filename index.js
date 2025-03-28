@@ -3,7 +3,7 @@ const schedule = require('node-schedule');
 const logger = require('./utils/logger');
 const { cleanRevokedTokens, cleanBookings, cleanInactiveBookings } = require('./tasks/cleanTasks');
 
-const requiredEnvVars = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'DB_PORT'];
+const requiredEnvVars = ['DATABASE_USER', 'DATABASE_HOST', 'DATABASE_NAME', 'DATABASE_PASSWORD', 'DATABASE_PORT'];
 requiredEnvVars.forEach((varName) => {
   if (!process.env[varName]) {
     logger.error(`Missing required environment variable: ${varName}`);

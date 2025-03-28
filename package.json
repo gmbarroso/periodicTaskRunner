@@ -1,0 +1,19 @@
+{
+  "name": "periodic-task-runner",
+  "version": "1.0.0",
+  "description": "Scripts for periodic cleanup of PostgreSQL tables",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "pg": "^8.10.0",
+    "node-schedule": "^2.1.0",
+    "winston": "^3.8.2",
+    "dotenv": "^16.0.3"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "type": "commonjs"
+}

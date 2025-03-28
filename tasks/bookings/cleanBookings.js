@@ -6,7 +6,7 @@ async function cleanBookings() {
     const query = `
       UPDATE booking 
       SET active = false 
-      WHERE startTime < NOW() - INTERVAL '3 months' 
+      WHERE "startTime" < NOW() - INTERVAL '3 months' 
       AND active = true
     `;
     await db.query(query);

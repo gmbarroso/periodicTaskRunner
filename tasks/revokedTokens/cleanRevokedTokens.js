@@ -1,4 +1,5 @@
 const db = require('../../utils/db');
+const handleTaskError = require('../../utils/errorHandler');
 const logger = require('../../utils/logger');
 
 async function cleanRevokedTokens() {
@@ -10,11 +11,7 @@ async function cleanRevokedTokens() {
     const result = await db.query(query);
     logger.info(`revoked_token table cleaned successfully. ${result.rowCount} rows deleted.`);
   } catch (error) {
-    logger.error('Error cleaning revoked_token table:', {
-      message: error.message,
-      stack: error.stack,
-      query: 'DELETE FROM revoked_token WHERE "expirationDate" < NOW()',
-    });
+    handleTaskError('cleanRevokedTokens', error, 'DELETE FROM revoked_token WHERE "expirationDate" < NOW()');
   }
 }
 

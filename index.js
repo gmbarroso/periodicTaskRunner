@@ -3,9 +3,15 @@ const schedule = require('node-schedule');
 const logger = require('./utils/logger');
 const { cleanRevokedTokens, cleanBookings, cleanInactiveBookings } = require('./tasks/cleanTasks');
 
-// Schedule cleanRevokedTokens to run 5 seconds from now
-const date = new Date(Date.now() + 5 * 1000); // Current time + 5 seconds
-schedule.scheduleJob(date, async () => {
+const requiredEnvVars = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD', 'DB_PORT'];
+requiredEnvVars.forEach((varName) => {
+  if (!process.env[varName]) {
+    logger.error(`Missing required environment variable: ${varName}`);
+    process.exit(1);
+  }
+});
+
+schedule.scheduleJob('59 23 * * 5', async () => {
   logger.info('Starting cleanup of the revoked_token table...');
   await cleanRevokedTokens();
 });

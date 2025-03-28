@@ -27,3 +27,7 @@ schedule.scheduleJob('0 0 1 1,7 *', async () => {
 });
 
 logger.info('Tasks successfully scheduled.');
+
+setInterval(() => {
+  logger.info('Worker is running...');
+}, 60 * 60 * 1000); 

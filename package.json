@@ -4,7 +4,8 @@
   "description": "Scripts for periodic cleanup of PostgreSQL tables",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test \"tests/**/*.test.js\""
   },
   "dependencies": {
     "dotenv": "^16.0.3",

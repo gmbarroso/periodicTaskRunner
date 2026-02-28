@@ -7,7 +7,11 @@ const logger = createLogger({
   level: logLevel,
   format: format.combine(
     format.timestamp(),
-    format.printf(({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}]: ${message}`)
+    format.printf((info) => {
+      const { timestamp, level, message, ...meta } = info;
+      const extra = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
+      return `${timestamp} [${level.toUpperCase()}]: ${message}${extra}`;
+    })
   ),
   transports: [
     new transports.Console(),

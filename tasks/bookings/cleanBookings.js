@@ -1,18 +1,22 @@
 const db = require('../../utils/db');
 const logger = require('../../utils/logger');
+const handleTaskError = require('../../utils/errorHandler');
+
+const SOFT_DEACTIVATE_BOOKINGS_SQL = `
+  UPDATE booking
+  SET active = false
+  WHERE "startTime" < NOW() - INTERVAL '3 months'
+  AND active = true
+`;
 
 async function cleanBookings() {
   try {
-    const query = `
-      UPDATE booking 
-      SET active = false 
-      WHERE "startTime" < NOW() - INTERVAL '3 months' 
-      AND active = true
-    `;
-    await db.query(query);
-    logger.info('Soft delete applied to booking records older than 3 months based on startTime successfully.');
+    const result = await db.query(SOFT_DEACTIVATE_BOOKINGS_SQL);
+    logger.info(`Soft cleanup applied successfully. ${result.rowCount} booking rows updated.`);
+    return result.rowCount;
   } catch (error) {
-    logger.error('Error applying soft delete to booking records:', error);
+    handleTaskError('cleanBookings', error, SOFT_DEACTIVATE_BOOKINGS_SQL);
+    return null;
   }
 }
 

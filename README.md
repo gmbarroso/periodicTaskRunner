@@ -11,7 +11,7 @@ This project automates the periodic cleanup of PostgreSQL tables using Node.js. 
 - **Environment Variables**:
   - Uses `.env` for secure configuration of database credentials.
 - **Logging**:
-  - Logs task execution and errors using the `winston` library.
+  - Logs task scheduling, start, success/failure, duration, affected rows, and heartbeat using the `winston` library.
 - **Modular Design**:
   - Each task is isolated for better maintainability.
 
@@ -59,7 +59,7 @@ This project automates the periodic cleanup of PostgreSQL tables using Node.js. 
    - Schedule the soft delete of `booking` records quarterly at 00:00 on the first day of January, April, July, and October, based on the `startTime` field.
    - Schedule the permanent deletion of inactive `booking` records every six months at 00:00 on the first day of January and July.
 
-3. Logs will be generated in the `logs/app.log` file and displayed in the console.
+3. Logs will be generated in daily rotated files (`logs/app-YYYY-MM-DD.log`) and displayed in the console.
 
 ## Project Structure
 
@@ -89,9 +89,30 @@ periodicTaskRunner/
 
 ## Logs
 
-Logs are stored in the `logs/app.log` file and include:
-- Task execution details.
-- Errors encountered during execution.
+Logs are stored in daily rotated files under `logs/` and include:
+- `job.scheduled` with cron and next run details.
+- `job.start` and `job.success` with duration and row counts.
+- `job.failed` with error details.
+- `worker.heartbeat` every hour.
+
+## Operational Policy (Current Stage)
+
+- Run this service as exactly one replica in Railway.
+- Treat this service as singleton until traffic/complexity requires horizontal scale.
+- If replicas are increased above `1`, distributed locking or equivalent execution control must be implemented first.
+
+## Deferred Reliability Items
+
+For now, the following are intentionally deferred:
+- Persistent execution history table in database.
+- External alerting integrations (Slack/email/webhook).
+- Distributed lock for multi-replica worker execution.
+
+These should be implemented when the worker is scaled or when logs are no longer enough for incident diagnosis.
+
+## Operations Runbook
+
+- See [`OPERATIONS.md`](./OPERATIONS.md) for Railway checks, failure handling, and revisit triggers.
 
 ## Contributing
 

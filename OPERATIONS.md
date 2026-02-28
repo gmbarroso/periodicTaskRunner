@@ -46,7 +46,9 @@ At least once per week:
 
 ## Incident Response (When `job.failed` Appears)
 
-1. Capture failure log entry (`jobName`, `errorMessage`, `errorStack`, `runId`).
+1. Capture failure logs:
+- From the `job.failed` entry, record `jobName`, `runId`, and failure fields.
+- If `job.failed` contains only `reason: "task returned null"`, also capture the immediately preceding task error entry emitted by `handleTaskError` (contains detailed error message/stack/query).
 2. Confirm DB connectivity and environment variables in Railway.
 3. Re-check subsequent runs:
 - If next run succeeds, keep monitoring.
@@ -70,4 +72,3 @@ Implement execution-history records and distributed lock when any of these happe
 - Missed cleanup cannot be proven/explained via logs.
 - Recurrent failures require historical run analytics.
 - Ownership/operations move beyond a single maintainer flow.
-

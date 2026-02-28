@@ -88,6 +88,15 @@ JOB_DEFINITIONS.forEach((jobDefinition) => {
     await runScheduledJob(jobDefinition);
   });
 
+  if (!scheduledJob) {
+    logStructured('error', 'job.schedule_failed', {
+      jobName: jobDefinition.name,
+      cron: jobDefinition.cron,
+      reason: 'invalid cron expression',
+    });
+    process.exit(1);
+  }
+
   logStructured('info', 'job.scheduled', {
     jobName: jobDefinition.name,
     cron: jobDefinition.cron,

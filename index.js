@@ -4,30 +4,102 @@ const logger = require('./utils/logger');
 const { cleanRevokedTokens, cleanBookings, cleanInactiveBookings } = require('./tasks/cleanTasks');
 
 const requiredEnvVars = ['DATABASE_USER', 'DATABASE_HOST', 'DATABASE_NAME', 'DATABASE_PASSWORD', 'DATABASE_PORT'];
-requiredEnvVars.forEach((varName) => {
-  if (!process.env[varName]) {
-    logger.error(`Missing required environment variable: ${varName}`);
-    process.exit(1);
+const missingEnvVars = requiredEnvVars.filter((varName) => !process.env[varName]);
+if (missingEnvVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  process.exit(1);
+}
+
+const JOB_DEFINITIONS = [
+  {
+    name: 'cleanRevokedTokens',
+    cron: '59 23 * * 5',
+    run: cleanRevokedTokens,
+    description: 'Delete expired tokens from revoked_token table',
+  },
+  {
+    name: 'cleanBookings',
+    cron: '0 0 1 1,4,7,10 *',
+    run: cleanBookings,
+    description: 'Set inactive=true for old bookings',
+  },
+  {
+    name: 'cleanInactiveBookings',
+    cron: '0 0 1 1,7 *',
+    run: cleanInactiveBookings,
+    description: 'Delete old inactive bookings',
+  },
+];
+
+function logStructured(level, event, payload) {
+  const entry = {
+    timestamp: new Date().toISOString(),
+    event,
+    ...payload,
+  };
+  logger[level](JSON.stringify(entry));
+}
+
+async function runScheduledJob(jobDefinition) {
+  const startedAt = Date.now();
+  const runId = `${jobDefinition.name}-${startedAt}`;
+
+  logStructured('info', 'job.start', {
+    runId,
+    jobName: jobDefinition.name,
+    cron: jobDefinition.cron,
+    description: jobDefinition.description,
+  });
+
+  try {
+    const rowCount = await jobDefinition.run();
+    const durationMs = Date.now() - startedAt;
+
+    if (rowCount === null) {
+      logStructured('error', 'job.failed', {
+        runId,
+        jobName: jobDefinition.name,
+        durationMs,
+        reason: 'task returned null',
+      });
+      return;
+    }
+
+    logStructured('info', 'job.success', {
+      runId,
+      jobName: jobDefinition.name,
+      durationMs,
+      rowCount,
+    });
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    logStructured('error', 'job.failed', {
+      runId,
+      jobName: jobDefinition.name,
+      durationMs,
+      errorMessage: error.message,
+      errorStack: error.stack,
+    });
   }
+}
+
+JOB_DEFINITIONS.forEach((jobDefinition) => {
+  const scheduledJob = schedule.scheduleJob(jobDefinition.cron, async () => {
+    await runScheduledJob(jobDefinition);
+  });
+
+  logStructured('info', 'job.scheduled', {
+    jobName: jobDefinition.name,
+    cron: jobDefinition.cron,
+    nextRun: scheduledJob.nextInvocation() ? String(scheduledJob.nextInvocation()) : null,
+  });
 });
 
-schedule.scheduleJob('59 23 * * 5', async () => {
-  logger.info('Starting cleanup of the revoked_token table...');
-  await cleanRevokedTokens();
-});
-
-schedule.scheduleJob('0 0 1 1,4,7,10 *', async () => {
-  logger.info('Starting cleanup of the booking table...');
-  await cleanBookings();
-});
-
-schedule.scheduleJob('0 0 1 1,7 *', async () => {
-  logger.info('Starting cleanup of inactive booking records...');
-  await cleanInactiveBookings();
-});
-
-logger.info('Tasks successfully scheduled.');
+logger.info('Tasks successfully scheduled with enhanced execution logging.');
 
 setInterval(() => {
-  logger.info('Worker is running...');
+  logStructured('info', 'worker.heartbeat', {
+    pid: process.pid,
+    uptimeSeconds: Math.floor(process.uptime()),
+  });
 }, 60 * 60 * 1000); 

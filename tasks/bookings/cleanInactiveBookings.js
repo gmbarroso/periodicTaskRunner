@@ -14,6 +14,7 @@ const HAS_ORGANIZATION_COLUMN_SQL = `
     FROM information_schema.columns
     WHERE table_name = 'booking'
       AND column_name = 'organizationId'
+      AND table_schema = current_schema()
   ) AS "exists"
 `;
 

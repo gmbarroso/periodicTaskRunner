@@ -37,10 +37,18 @@ function loadTaskWithMocks({ dbQueryImpl, loggerInfoImpl, errorHandlerImpl }) {
 }
 
 test('deletes expired revoked-token entries (expirationDate <= NOW)', async (t) => {
-  let capturedQuery = '';
+  const queries = [];
+  let callIndex = 0;
   const { cleanRevokedTokens, restore } = loadTaskWithMocks({
     dbQueryImpl: async (query) => {
-      capturedQuery = query;
+      queries.push(query);
+      callIndex += 1;
+      if (callIndex === 1) {
+        return { rows: [{ exists: true }] };
+      }
+      if (callIndex === 2) {
+        return { rows: [{ organizationId: 'org-1', total: 2 }] };
+      }
       return { rowCount: 1 };
     },
   });
@@ -49,15 +57,22 @@ test('deletes expired revoked-token entries (expirationDate <= NOW)', async (t) 
   const deletedRows = await cleanRevokedTokens();
 
   assert.equal(deletedRows, 1);
-  assert.match(capturedQuery, /DELETE FROM revoked_token/);
-  assert.match(capturedQuery, /"expirationDate"\s*<=\s*NOW\(\)/);
+  assert.equal(queries.length, 3);
+  assert.match(queries[0], /FROM information_schema\.columns/);
+  assert.match(queries[0], /table_schema = current_schema\(\)/);
+  assert.match(queries[1], /SELECT "organizationId", COUNT\(\*\)::int AS total/);
+  assert.match(queries[2], /DELETE FROM revoked_token/);
+  assert.match(queries[2], /"expirationDate"\s*<=\s*NOW\(\)/);
 });
 
-test('preserves non-expired revoked-token entries (simulated by zero deletions)', async (t) => {
-  let queryCalled = false;
+test('skips organization preview query when organizationId column does not exist', async (t) => {
+  const queries = [];
   const { cleanRevokedTokens, restore } = loadTaskWithMocks({
-    dbQueryImpl: async () => {
-      queryCalled = true;
+    dbQueryImpl: async (query) => {
+      queries.push(query);
+      if (queries.length === 1) {
+        return { rows: [{ exists: false }] };
+      }
       return { rowCount: 0 };
     },
     errorHandlerImpl: () => {
@@ -69,7 +84,9 @@ test('preserves non-expired revoked-token entries (simulated by zero deletions)'
   const deletedRows = await cleanRevokedTokens();
 
   assert.equal(deletedRows, 0);
-  assert.equal(queryCalled, true);
+  assert.equal(queries.length, 2);
+  assert.match(queries[0], /table_schema = current_schema\(\)/);
+  assert.doesNotMatch(queries[1], /SELECT "organizationId", COUNT\(\*\)::int AS total/);
 });
 
 test('returns null and calls error handler when delete query fails', async (t) => {
@@ -77,8 +94,16 @@ test('returns null and calls error handler when delete query fails', async (t) =
   let capturedTaskName = '';
   let capturedError = null;
   let capturedQuery = '';
+  let callIndex = 0;
   const { cleanRevokedTokens, restore } = loadTaskWithMocks({
     dbQueryImpl: async () => {
+      callIndex += 1;
+      if (callIndex === 1) {
+        return { rows: [{ exists: true }] };
+      }
+      if (callIndex === 2) {
+        return { rows: [{ organizationId: 'org-1', total: 2 }] };
+      }
       throw expectedError;
     },
     errorHandlerImpl: (taskName, error, query) => {

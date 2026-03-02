@@ -37,10 +37,18 @@ function loadTaskWithMocks({ dbQueryImpl, loggerInfoImpl, errorHandlerImpl }) {
 }
 
 test('updates old active bookings and returns updated row count', async (t) => {
-  let capturedQuery = '';
+  const queries = [];
+  let callIndex = 0;
   const { cleanBookings, restore } = loadTaskWithMocks({
     dbQueryImpl: async (query) => {
-      capturedQuery = query;
+      queries.push(query);
+      callIndex += 1;
+      if (callIndex === 1) {
+        return { rows: [{ exists: true }] };
+      }
+      if (callIndex === 2) {
+        return { rows: [{ organizationId: 'org-1', total: 2 }] };
+      }
       return { rowCount: 3 };
     },
   });
@@ -49,14 +57,25 @@ test('updates old active bookings and returns updated row count', async (t) => {
   const updatedRows = await cleanBookings();
 
   assert.equal(updatedRows, 3);
-  assert.match(capturedQuery, /UPDATE booking/);
-  assert.match(capturedQuery, /SET active = false/);
-  assert.match(capturedQuery, /INTERVAL '3 months'/);
+  assert.equal(queries.length, 3);
+  assert.match(queries[0], /FROM information_schema\.columns/);
+  assert.match(queries[0], /table_schema = current_schema\(\)/);
+  assert.match(queries[1], /SELECT "organizationId", COUNT\(\*\)::int AS total/);
+  assert.match(queries[2], /UPDATE booking/);
+  assert.match(queries[2], /SET active = false/);
+  assert.match(queries[2], /INTERVAL '3 months'/);
 });
 
-test('returns zero when there are no qualifying bookings', async (t) => {
+test('skips organization preview query when organizationId column does not exist', async (t) => {
+  const queries = [];
   const { cleanBookings, restore } = loadTaskWithMocks({
-    dbQueryImpl: async () => ({ rowCount: 0 }),
+    dbQueryImpl: async (query) => {
+      queries.push(query);
+      if (queries.length === 1) {
+        return { rows: [{ exists: false }] };
+      }
+      return { rowCount: 0 };
+    },
     errorHandlerImpl: () => {
       throw new Error('error handler should not be called for zero updates');
     },
@@ -65,6 +84,9 @@ test('returns zero when there are no qualifying bookings', async (t) => {
 
   const updatedRows = await cleanBookings();
   assert.equal(updatedRows, 0);
+  assert.equal(queries.length, 2);
+  assert.match(queries[0], /table_schema = current_schema\(\)/);
+  assert.doesNotMatch(queries[1], /SELECT "organizationId", COUNT\(\*\)::int AS total/);
 });
 
 test('returns null and calls error handler when update query fails', async (t) => {
@@ -72,8 +94,16 @@ test('returns null and calls error handler when update query fails', async (t) =
   let capturedTaskName = '';
   let capturedError = null;
   let capturedQuery = '';
+  let callIndex = 0;
   const { cleanBookings, restore } = loadTaskWithMocks({
     dbQueryImpl: async () => {
+      callIndex += 1;
+      if (callIndex === 1) {
+        return { rows: [{ exists: true }] };
+      }
+      if (callIndex === 2) {
+        return { rows: [{ organizationId: 'org-1', total: 2 }] };
+      }
       throw expectedError;
     },
     errorHandlerImpl: (taskName, error, query) => {

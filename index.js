@@ -1,7 +1,7 @@
 require('dotenv').config();
 const schedule = require('node-schedule');
 const logger = require('./utils/logger');
-const { cleanRevokedTokens, cleanBookings, cleanInactiveBookings } = require('./tasks/cleanTasks');
+const { cleanRevokedTokens, cleanBookings, cleanInactiveBookings, pollInboundEmailReplies } = require('./tasks/cleanTasks');
 
 const requiredEnvVars = ['DATABASE_USER', 'DATABASE_HOST', 'DATABASE_NAME', 'DATABASE_PASSWORD', 'DATABASE_PORT'];
 const missingEnvVars = requiredEnvVars.filter((varName) => !process.env[varName]);
@@ -30,6 +30,15 @@ const JOB_DEFINITIONS = [
     description: 'Delete old inactive bookings',
   },
 ];
+
+if ((process.env.INBOUND_EMAIL_ENABLED || '').trim().toLowerCase() === 'true') {
+  JOB_DEFINITIONS.push({
+    name: 'pollInboundEmailReplies',
+    cron: (process.env.INBOUND_EMAIL_POLL_CRON || '*/1 * * * *').trim(),
+    run: pollInboundEmailReplies,
+    description: 'Ingest resident email replies into app conversations',
+  });
+}
 
 function logStructured(level, event, payload) {
   const entry = {

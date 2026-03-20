@@ -9,6 +9,8 @@
   },
   "dependencies": {
     "dotenv": "^16.0.3",
+    "imapflow": "^1.0.182",
+    "mailparser": "^3.7.5",
     "node-schedule": "^2.1.0",
     "pg": "^8.10.0",
     "winston": "^3.8.2",

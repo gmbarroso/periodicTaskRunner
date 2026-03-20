@@ -118,6 +118,19 @@ Logs are stored in daily rotated files under `logs/` and include:
 - `job.failed` with error details.
 - `worker.heartbeat` every hour.
 
+## Multitenancy Status and Next Step
+
+Current inbound email sync is designed for one mailbox configuration from environment variables. This is suitable for one organization or a shared mailbox setup.
+
+For full multitenancy (many clients/mailboxes), the next evolution is:
+1. Store mailbox config per organization in the database.
+2. Poll per organization, or preferably use provider webhook/push per organization.
+3. Process inbound events through a queue with organization-scoped workers/checkpoints.
+
+Summary:
+- Works now for one organization (or one shared inbox).
+- Not the final architecture for many organization-specific mailboxes.
+
 ## Operational Policy (Current Stage)
 
 - Run this service as exactly one replica in Railway.

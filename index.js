@@ -10,6 +10,13 @@ if (missingEnvVars.length > 0) {
   process.exit(1);
 }
 
+function boolFromEnv(name, defaultValue = false) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null || raw === '') return defaultValue;
+  const normalized = String(raw).trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+}
+
 const JOB_DEFINITIONS = [
   {
     name: 'cleanRevokedTokens',
@@ -31,7 +38,7 @@ const JOB_DEFINITIONS = [
   },
 ];
 
-if ((process.env.INBOUND_EMAIL_ENABLED || '').trim().toLowerCase() === 'true') {
+if (boolFromEnv('INBOUND_EMAIL_ENABLED', false)) {
   JOB_DEFINITIONS.push({
     name: 'pollInboundEmailReplies',
     cron: (process.env.INBOUND_EMAIL_POLL_CRON || '*/1 * * * *').trim(),
@@ -50,6 +57,15 @@ function logStructured(level, event, payload) {
 }
 
 async function runScheduledJob(jobDefinition) {
+  if (jobDefinition._running) {
+    logStructured('warn', 'job.skipped_already_running', {
+      jobName: jobDefinition.name,
+      cron: jobDefinition.cron,
+    });
+    return;
+  }
+
+  jobDefinition._running = true;
   const startedAt = Date.now();
   const runId = `${jobDefinition.name}-${startedAt}`;
 
@@ -89,6 +105,8 @@ async function runScheduledJob(jobDefinition) {
       errorMessage: error.message,
       errorStack: error.stack,
     });
+  } finally {
+    jobDefinition._running = false;
   }
 }
 

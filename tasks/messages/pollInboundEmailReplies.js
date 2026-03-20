@@ -12,6 +12,15 @@ function boolFromEnv(name, defaultValue = false) {
   return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
+function parseRequiredPort(name) {
+  const raw = (process.env[name] || '').trim();
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+    throw new Error(`${name} must be a valid integer port between 1 and 65535`);
+  }
+  return parsed;
+}
+
 async function resolveMessageThreadByProviderIds(providerIds) {
   if (!providerIds.length) return null;
 
@@ -74,8 +83,7 @@ async function ingestInboundReply(payload) {
   });
 
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Inbound email ingest failed (${response.status}): ${body.slice(0, 500)}`);
+    throw new Error(`Inbound email ingest failed (${response.status}) ${String(response.statusText || '').trim()}`);
   }
 
   return response.json();
@@ -104,7 +112,7 @@ async function pollInboundEmailReplies() {
   validateConfig();
 
   const imapHost = process.env.INBOUND_EMAIL_IMAP_HOST.trim();
-  const imapPort = Number(process.env.INBOUND_EMAIL_IMAP_PORT);
+  const imapPort = parseRequiredPort('INBOUND_EMAIL_IMAP_PORT');
   const imapSecure = boolFromEnv('INBOUND_EMAIL_IMAP_SECURE', true);
   const imapUser = process.env.INBOUND_EMAIL_IMAP_USER.trim();
   const imapPassword = process.env.INBOUND_EMAIL_IMAP_PASSWORD.trim();
@@ -135,7 +143,8 @@ async function pollInboundEmailReplies() {
       return 0;
     }
 
-    const targetUids = uids.slice(-maxPerRun);
+    // Process oldest unseen messages first to avoid starving older emails.
+    const targetUids = [...uids].sort((a, b) => a - b).slice(0, maxPerRun);
     const fetchIterator = client.fetch(targetUids, {
       uid: true,
       envelope: true,
@@ -160,7 +169,7 @@ async function pollInboundEmailReplies() {
               providerMessageId: normalizedExternalMessageId,
             }),
           );
-          await client.messageFlagsAdd(message.uid, ['\\Seen']);
+          await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
           continue;
         }
 
@@ -175,7 +184,7 @@ async function pollInboundEmailReplies() {
               messageId: resolved.messageId,
             }),
           );
-          await client.messageFlagsAdd(message.uid, ['\\Seen']);
+          await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
           continue;
         }
 
@@ -202,7 +211,7 @@ async function pollInboundEmailReplies() {
           }),
         );
 
-        await client.messageFlagsAdd(message.uid, ['\\Seen']);
+        await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
       } catch (error) {
         handleTaskError('pollInboundEmailReplies.message', error);
       }

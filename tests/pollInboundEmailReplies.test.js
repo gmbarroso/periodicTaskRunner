@@ -3,19 +3,17 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 
 const taskPath = path.resolve(__dirname, '../tasks/messages/pollInboundEmailReplies.js');
-const dbPath = path.resolve(__dirname, '../utils/db.js');
 const loggerPath = path.resolve(__dirname, '../utils/logger.js');
 const errorHandlerPath = path.resolve(__dirname, '../utils/errorHandler.js');
 
 const imapflowPath = require.resolve('imapflow', { paths: [path.resolve(__dirname, '..')] });
 const mailparserPath = require.resolve('mailparser', { paths: [path.resolve(__dirname, '..')] });
 
-const pathsToMock = [taskPath, dbPath, loggerPath, errorHandlerPath, imapflowPath, mailparserPath];
+const pathsToMock = [taskPath, loggerPath, errorHandlerPath, imapflowPath, mailparserPath];
 
 function loadTaskWithMocks({
   searchResult = [],
   parsedByUid = {},
-  resolveThreadRowsByCall = [],
   fetchImpl = async () => ({ ok: true, json: async () => ({ created: true }) }),
 }) {
   const previousCache = new Map(pathsToMock.map((cachePath) => [cachePath, require.cache[cachePath]]));
@@ -49,16 +47,6 @@ function loadTaskWithMocks({
     async logout() {}
   }
 
-  let queryCallIndex = 0;
-  require.cache[dbPath] = {
-    exports: {
-      query: async () => {
-        const nextRows = resolveThreadRowsByCall[queryCallIndex] || [];
-        queryCallIndex += 1;
-        return { rows: nextRows };
-      },
-    },
-  };
   require.cache[loggerPath] = {
     exports: {
       info: () => undefined,
@@ -123,24 +111,38 @@ test('returns 0 when inbound email worker is disabled', async () => {
 
 test('ingests one inbound email and marks seen with uid mode', async () => {
   withBaseEnv();
+  const fetchCalls = [];
   const { pollInboundEmailReplies, restore, flagsCalls } = loadTaskWithMocks({
     searchResult: [100],
     parsedByUid: {
       100: {
         from: { value: [{ address: 'resident@example.com' }] },
+        to: { value: [{ address: 'faleconosco+grillrent.token@example.com' }] },
         messageId: '<ext-100@example.com>',
         inReplyTo: '<admin-root@example.com>',
         text: 'Resposta do morador',
         subject: 'Re: assunto',
         date: new Date('2026-03-20T10:00:00.000Z'),
+        headers: new Map([
+          ['delivered-to', 'faleconosco+grillrent.token@example.com'],
+          ['x-original-to', 'faleconosco+grillrent.token@example.com'],
+        ]),
       },
     },
-    resolveThreadRowsByCall: [[{ messageId: 'msg-1', organizationId: 'org-1', senderEmail: 'resident@example.com' }]],
+    fetchImpl: async (_url, init) => {
+      fetchCalls.push(JSON.parse(init.body));
+      return { ok: true, json: async () => ({ created: true, reason: null, replyId: 'reply-1' }) };
+    },
   });
 
   try {
     const result = await pollInboundEmailReplies();
     assert.equal(result, 1);
+    assert.equal(fetchCalls.length, 1);
+    assert.deepEqual(fetchCalls[0].threadMessageIds, ['admin-root@example.com']);
+    assert.deepEqual(fetchCalls[0].toRecipients, ['faleconosco+grillrent.token@example.com']);
+    assert.deepEqual(fetchCalls[0].deliveredToRecipients, ['faleconosco+grillrent.token@example.com']);
+    assert.deepEqual(fetchCalls[0].xOriginalToRecipients, ['faleconosco+grillrent.token@example.com']);
     assert.equal(flagsCalls.length, 1);
     assert.deepEqual(flagsCalls[0], {
       uid: 100,
@@ -152,26 +154,62 @@ test('ingests one inbound email and marks seen with uid mode', async () => {
   }
 });
 
-test('marks message as seen when thread cannot be resolved', async () => {
+test('forwards recipient address even without thread headers (plus-token path)', async () => {
   withBaseEnv();
+  const fetchCalls = [];
   const { pollInboundEmailReplies, restore, flagsCalls } = loadTaskWithMocks({
     searchResult: [200],
     parsedByUid: {
       200: {
         from: { value: [{ address: 'resident@example.com' }] },
+        to: { value: [{ address: 'faleconosco+grillrent.plus_token@example.com' }] },
         messageId: '<ext-200@example.com>',
-        inReplyTo: '<unknown-thread@example.com>',
-        text: 'Resposta sem thread',
+        text: 'Resposta com token de endereco',
       },
     },
-    resolveThreadRowsByCall: [[]],
+    fetchImpl: async (_url, init) => {
+      fetchCalls.push(JSON.parse(init.body));
+      return { ok: true, json: async () => ({ created: true, reason: null, replyId: 'reply-2' }) };
+    },
+  });
+
+  try {
+    const result = await pollInboundEmailReplies();
+    assert.equal(result, 1);
+    assert.equal(fetchCalls.length, 1);
+    assert.deepEqual(fetchCalls[0].threadMessageIds, []);
+    assert.deepEqual(fetchCalls[0].toRecipients, ['faleconosco+grillrent.plus_token@example.com']);
+    assert.equal(flagsCalls.length, 1);
+    assert.equal(flagsCalls[0].uid, 200);
+    assert.deepEqual(flagsCalls[0].options, { uid: true });
+  } finally {
+    restore();
+  }
+});
+
+test('marks as seen and does not count ingestion when API returns invalid_reply_token', async () => {
+  withBaseEnv();
+  const { pollInboundEmailReplies, restore, flagsCalls } = loadTaskWithMocks({
+    searchResult: [300],
+    parsedByUid: {
+      300: {
+        from: { value: [{ address: 'resident@example.com' }] },
+        to: { value: [{ address: 'faleconosco+grillrent.invalid@example.com' }] },
+        messageId: '<ext-300@example.com>',
+        text: 'Resposta com token invalido',
+      },
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ created: false, reason: 'invalid_reply_token', replyId: null }),
+    }),
   });
 
   try {
     const result = await pollInboundEmailReplies();
     assert.equal(result, 0);
     assert.equal(flagsCalls.length, 1);
-    assert.equal(flagsCalls[0].uid, 200);
+    assert.equal(flagsCalls[0].uid, 300);
     assert.deepEqual(flagsCalls[0].options, { uid: true });
   } finally {
     restore();

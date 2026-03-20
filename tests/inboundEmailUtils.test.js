@@ -1,6 +1,11 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { collectThreadMessageIds, extractPlainReply, normalizeMessageId } = require('../tasks/messages/inboundEmailUtils');
+const {
+  collectRecipientAddresses,
+  collectThreadMessageIds,
+  extractPlainReply,
+  normalizeMessageId,
+} = require('../tasks/messages/inboundEmailUtils');
 
 test('normalizeMessageId strips angle brackets and lowercases', () => {
   assert.equal(normalizeMessageId('<ABC@Example.com>'), 'abc@example.com');
@@ -28,4 +33,19 @@ test('extractPlainReply removes quoted section', () => {
   ].join('\n');
 
   assert.equal(extractPlainReply(text), 'Minha resposta');
+});
+
+test('collectRecipientAddresses returns to/deliveredTo/xOriginalTo recipients', () => {
+  const parsed = {
+    to: { value: [{ address: 'faleconosco+grillrent.abc@example.com' }] },
+    headers: new Map([
+      ['delivered-to', 'faleconosco+grillrent.abc@example.com'],
+      ['x-original-to', '<faleconosco+grillrent.abc@example.com>'],
+    ]),
+  };
+
+  const recipients = collectRecipientAddresses(parsed);
+  assert.deepEqual(recipients.toRecipients, ['faleconosco+grillrent.abc@example.com']);
+  assert.deepEqual(recipients.deliveredToRecipients, ['faleconosco+grillrent.abc@example.com']);
+  assert.deepEqual(recipients.xOriginalToRecipients, ['faleconosco+grillrent.abc@example.com']);
 });

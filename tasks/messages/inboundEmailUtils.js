@@ -52,7 +52,8 @@ function extractAddresses(value) {
   if (typeof value === 'object') {
     if (Array.isArray(value.value)) {
       return value.value
-        .map((entry) => (entry && typeof entry.address === 'string' ? entry.address.trim().toLowerCase() : null))
+        // Keep original case because reply tokens in plus-address are case-sensitive (base64url).
+        .map((entry) => (entry && typeof entry.address === 'string' ? entry.address.trim() : null))
         .filter(Boolean);
     }
     return [];
@@ -63,7 +64,7 @@ function extractAddresses(value) {
   }
 
   const matches = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+/gi) || [];
-  return matches.map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+  return matches.map((entry) => entry.trim()).filter(Boolean);
 }
 
 function collectRecipientAddresses(parsed) {

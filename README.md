@@ -60,6 +60,8 @@ This project automates the periodic cleanup of PostgreSQL tables using Node.js. 
      INBOUND_EMAIL_IMAP_HOST=imap.gmail.com
      INBOUND_EMAIL_IMAP_PORT=993
      INBOUND_EMAIL_IMAP_SECURE=true
+     INBOUND_EMAIL_IMAP_CONNECT_TIMEOUT_MS=30000
+     INBOUND_EMAIL_IMAP_SOCKET_TIMEOUT_MS=45000
      INBOUND_EMAIL_IMAP_USER=faleconosco@example.com
      INBOUND_EMAIL_IMAP_PASSWORD=app_password
      INBOUND_EMAIL_IMAP_MAILBOX=INBOX

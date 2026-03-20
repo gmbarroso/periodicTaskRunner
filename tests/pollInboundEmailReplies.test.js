@@ -32,6 +32,7 @@ function loadTaskWithMocks({
   }));
 
   class MockImapFlow {
+    on() {}
     async connect() {}
     async mailboxOpen() {}
     async search() {

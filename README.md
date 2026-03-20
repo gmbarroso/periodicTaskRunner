@@ -140,6 +140,7 @@ Summary:
 - API env vars (in `grillrentapi`):
   - `CONTACT_EMAIL_REPLY_TOKEN_SECRET` (required)
   - `CONTACT_EMAIL_REPLY_TOKEN_TTL_HOURS` (required, e.g. `720`)
+  - `CONTACT_EMAIL_REPLY_BASE_ADDRESS` (required, mailbox base for tokenized `Reply-To`)
 - Mailbox requirement:
   - The reply mailbox used in outbound `Reply-To` must accept plus-addressing aliases, e.g. `faleconosco+grillrent.<token>@domain.com`.
 

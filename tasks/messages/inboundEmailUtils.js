@@ -42,6 +42,42 @@ function collectThreadMessageIds(parsed) {
   return Array.from(new Set(collected));
 }
 
+function extractAddresses(value) {
+  if (!value) return [];
+
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => extractAddresses(entry));
+  }
+
+  if (typeof value === 'object') {
+    if (Array.isArray(value.value)) {
+      return value.value
+        .map((entry) => (entry && typeof entry.address === 'string' ? entry.address.trim().toLowerCase() : null))
+        .filter(Boolean);
+    }
+    return [];
+  }
+
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  const matches = value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+/gi) || [];
+  return matches.map((entry) => entry.trim().toLowerCase()).filter(Boolean);
+}
+
+function collectRecipientAddresses(parsed) {
+  const toRecipients = extractAddresses(parsed?.to);
+  const deliveredToRecipients = extractAddresses(parsed?.headers?.get?.('delivered-to'));
+  const xOriginalToRecipients = extractAddresses(parsed?.headers?.get?.('x-original-to'));
+
+  return {
+    toRecipients: Array.from(new Set(toRecipients)),
+    deliveredToRecipients: Array.from(new Set(deliveredToRecipients)),
+    xOriginalToRecipients: Array.from(new Set(xOriginalToRecipients)),
+  };
+}
+
 function extractPlainReply(text) {
   if (!text || typeof text !== 'string') return '';
   const normalized = text.replace(/\r\n/g, '\n').trim();
@@ -69,5 +105,6 @@ function extractPlainReply(text) {
 module.exports = {
   normalizeMessageId,
   collectThreadMessageIds,
+  collectRecipientAddresses,
   extractPlainReply,
 };

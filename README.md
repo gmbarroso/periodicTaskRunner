@@ -16,8 +16,10 @@ This project automates the periodic cleanup of PostgreSQL tables using Node.js. 
   - Each task is isolated for better maintainability.
 - **Inbound Contact Reply Sync (optional)**:
   - Polls mailbox replies via IMAP.
-  - Resolves thread using `In-Reply-To`/`References`.
-  - Sends inbound reply to API `POST /messages/inbound/email`.
+  - Forwards thread headers (`In-Reply-To`/`References`) and recipient addresses (`To`, `Delivered-To`, `X-Original-To`) to API `POST /messages/inbound/email`.
+  - API resolves thread with strategy 1+2:
+    - Header threading first.
+    - Signed plus-address reply token fallback (`+grillrent.<token>`).
 
 ## Prerequisites
 
@@ -132,6 +134,35 @@ For full multitenancy (many clients/mailboxes), the next evolution is:
 Summary:
 - Works now for one organization (or one shared inbox).
 - Not the final architecture for many organization-specific mailboxes.
+
+## Inbound Email Threading Requirements
+
+- API env vars (in `grillrentapi`):
+  - `CONTACT_EMAIL_REPLY_TOKEN_SECRET` (required)
+  - `CONTACT_EMAIL_REPLY_TOKEN_TTL_HOURS` (required, e.g. `720`)
+- Mailbox requirement:
+  - The reply mailbox used in outbound `Reply-To` must accept plus-addressing aliases, e.g. `faleconosco+grillrent.<token>@domain.com`.
+
+## Rollout Checklist
+
+1. Configure `CONTACT_EMAIL_REPLY_TOKEN_SECRET` and `CONTACT_EMAIL_REPLY_TOKEN_TTL_HOURS` in `grillrentapi`.
+2. Ensure outbound contact emails use a reply mailbox that supports plus-addressing.
+3. Deploy `grillrentapi` and `periodicTaskRunner` together so the worker forwards the new inbound payload fields.
+4. Send a real end-to-end email reply and verify the admin inbox thread is updated in-app.
+5. Confirm duplicate inbound provider IDs are deduplicated (no duplicate reply rows).
+
+## Troubleshooting
+
+- `thread_not_found`:
+  - Header IDs are unknown and no valid plus-token recipient was found.
+  - Check if outbound email had `In-Reply-To`/`References` and tokenized `Reply-To`.
+- `invalid_reply_token`:
+  - Plus-token missing, tampered, or expired.
+  - Verify `CONTACT_EMAIL_REPLY_TOKEN_SECRET` consistency across deployments and TTL value.
+- `sender_mismatch`:
+  - `fromEmail` does not match resident sender expected by message/thread token.
+- `duplicate_external_message`:
+  - Inbound provider message ID already ingested; dedupe is working by design.
 
 ## Operational Policy (Current Stage)
 

@@ -1,9 +1,13 @@
 const { ImapFlow } = require('imapflow');
 const { simpleParser } = require('mailparser');
 const logger = require('../../utils/logger');
-const db = require('../../utils/db');
 const handleTaskError = require('../../utils/errorHandler');
-const { collectThreadMessageIds, extractPlainReply, normalizeMessageId } = require('./inboundEmailUtils');
+const {
+  collectRecipientAddresses,
+  collectThreadMessageIds,
+  extractPlainReply,
+  normalizeMessageId,
+} = require('./inboundEmailUtils');
 
 function boolFromEnv(name, defaultValue = false) {
   const raw = process.env[name];
@@ -29,50 +33,6 @@ function parsePositiveInt(name, defaultValue) {
     throw new Error(`${name} must be a positive integer`);
   }
   return parsed;
-}
-
-async function resolveMessageThreadByProviderIds(providerIds) {
-  if (!providerIds.length) return null;
-
-  const { rows } = await db.query(
-    `
-      with normalized_candidates as (
-        select unnest($1::text[]) as candidate
-      ),
-      direct_match as (
-        select
-          m.id as "messageId",
-          m."organizationId" as "organizationId",
-          m."senderEmail" as "senderEmail",
-          1 as priority
-        from message m
-        join normalized_candidates c
-          on regexp_replace(lower(coalesce(m."adminEmailProviderMessageId", '')), '[<>]', '', 'g') = c.candidate
-      ),
-      reply_match as (
-        select
-          m.id as "messageId",
-          m."organizationId" as "organizationId",
-          m."senderEmail" as "senderEmail",
-          2 as priority
-        from message_reply mr
-        join message m on m.id = mr."messageId"
-        join normalized_candidates c
-          on regexp_replace(lower(coalesce(mr."emailProviderMessageId", '')), '[<>]', '', 'g') = c.candidate
-      )
-      select "messageId", "organizationId", "senderEmail"
-      from (
-        select * from direct_match
-        union all
-        select * from reply_match
-      ) matches
-      order by priority asc
-      limit 1
-    `,
-    [providerIds],
-  );
-
-  return rows[0] || null;
 }
 
 async function ingestInboundReply(payload) {
@@ -182,14 +142,14 @@ async function pollInboundEmailReplies() {
         const fromEmail = parsed?.from?.value?.[0]?.address?.trim().toLowerCase() || null;
         const normalizedExternalMessageId = normalizeMessageId(parsed?.messageId);
         const threadProviderIds = collectThreadMessageIds(parsed);
-        const resolved = await resolveMessageThreadByProviderIds(threadProviderIds);
+        const recipients = collectRecipientAddresses(parsed);
 
-        if (!resolved || !fromEmail) {
+        if (!fromEmail) {
           logger.warn(
             JSON.stringify({
               event: 'inbound_email_skipped',
               uid: message.uid,
-              reason: !resolved ? 'thread_not_found' : 'missing_from_email',
+              reason: 'missing_from_email',
               providerMessageId: normalizedExternalMessageId,
             }),
           );
@@ -205,7 +165,6 @@ async function pollInboundEmailReplies() {
               uid: message.uid,
               reason: 'empty_content_after_cleanup',
               providerMessageId: normalizedExternalMessageId,
-              messageId: resolved.messageId,
             }),
           );
           await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
@@ -213,25 +172,29 @@ async function pollInboundEmailReplies() {
         }
 
         const payload = {
-          organizationId: resolved.organizationId,
-          messageId: resolved.messageId,
           fromEmail,
           content: cleanContent,
           externalMessageId: normalizedExternalMessageId,
           subject: parsed.subject || null,
           receivedAt: parsed.date ? parsed.date.toISOString() : undefined,
+          threadMessageIds: threadProviderIds,
+          toRecipients: recipients.toRecipients,
+          deliveredToRecipients: recipients.deliveredToRecipients,
+          xOriginalToRecipients: recipients.xOriginalToRecipients,
         };
 
-        await ingestInboundReply(payload);
-        ingestedCount += 1;
+        const ingestResult = await ingestInboundReply(payload);
+        if (ingestResult?.created) {
+          ingestedCount += 1;
+        }
 
-        logger.info(
+        const logLevel = ingestResult?.created ? 'info' : 'warn';
+        logger[logLevel](
           JSON.stringify({
-            event: 'inbound_email_ingested',
+            event: ingestResult?.created ? 'inbound_email_ingested' : 'inbound_email_not_created',
             uid: message.uid,
             providerMessageId: normalizedExternalMessageId,
-            messageId: resolved.messageId,
-            organizationId: resolved.organizationId,
+            reason: ingestResult?.reason || null,
           }),
         );
 

@@ -21,6 +21,16 @@ function parseRequiredPort(name) {
   return parsed;
 }
 
+function parsePositiveInt(name, defaultValue) {
+  const raw = (process.env[name] || '').trim();
+  if (!raw) return defaultValue;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
+}
+
 async function resolveMessageThreadByProviderIds(providerIds) {
   if (!providerIds.length) return null;
 
@@ -37,7 +47,7 @@ async function resolveMessageThreadByProviderIds(providerIds) {
           1 as priority
         from message m
         join normalized_candidates c
-          on lower(coalesce(m."adminEmailProviderMessageId", '')) = c.candidate
+          on regexp_replace(lower(coalesce(m."adminEmailProviderMessageId", '')), '[<>]', '', 'g') = c.candidate
       ),
       reply_match as (
         select
@@ -48,7 +58,7 @@ async function resolveMessageThreadByProviderIds(providerIds) {
         from message_reply mr
         join message m on m.id = mr."messageId"
         join normalized_candidates c
-          on lower(coalesce(mr."emailProviderMessageId", '')) = c.candidate
+          on regexp_replace(lower(coalesce(mr."emailProviderMessageId", '')), '[<>]', '', 'g') = c.candidate
       )
       select "messageId", "organizationId", "senderEmail"
       from (
@@ -116,6 +126,8 @@ async function pollInboundEmailReplies() {
   const imapSecure = boolFromEnv('INBOUND_EMAIL_IMAP_SECURE', true);
   const imapUser = process.env.INBOUND_EMAIL_IMAP_USER.trim();
   const imapPassword = process.env.INBOUND_EMAIL_IMAP_PASSWORD.trim();
+  const imapConnectTimeoutMs = parsePositiveInt('INBOUND_EMAIL_IMAP_CONNECT_TIMEOUT_MS', 30000);
+  const imapSocketTimeoutMs = parsePositiveInt('INBOUND_EMAIL_IMAP_SOCKET_TIMEOUT_MS', 45000);
   const mailbox = (process.env.INBOUND_EMAIL_IMAP_MAILBOX || 'INBOX').trim();
   const unseenOnly = boolFromEnv('INBOUND_EMAIL_UNSEEN_ONLY', true);
   const maxPerRun = Math.max(1, Number(process.env.INBOUND_EMAIL_MAX_PER_RUN || 20));
@@ -128,7 +140,19 @@ async function pollInboundEmailReplies() {
       user: imapUser,
       pass: imapPassword,
     },
+    connectionTimeout: imapConnectTimeoutMs,
+    socketTimeout: imapSocketTimeoutMs,
     logger: false,
+  });
+
+  client.on('error', (error) => {
+    logger.error(
+      JSON.stringify({
+        event: 'inbound_email_imap_error',
+        errorMessage: error?.message || 'Unknown IMAP error',
+        errorCode: error?.code || null,
+      }),
+    );
   });
 
   let ingestedCount = 0;

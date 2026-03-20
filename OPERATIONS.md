@@ -18,13 +18,20 @@ This runbook covers day-to-day operation of `periodicTaskRunner` in Railway with
 - `cleanRevokedTokens`: `59 23 * * 5` (weekly, Friday 23:59)
 - `cleanBookings`: `0 0 1 1,4,7,10 *` (quarterly, Jan/Apr/Jul/Oct day 1 at 00:00)
 - `cleanInactiveBookings`: `0 0 1 1,7 *` (semiannual, Jan/Jul day 1 at 00:00)
+- `pollInboundEmailReplies`: configurable `INBOUND_EMAIL_POLL_CRON` (default `*/1 * * * *`) when `INBOUND_EMAIL_ENABLED=true`
 
 ## Post-Deploy Checklist (Railway)
 
 1. Open Railway logs for the worker service.
-2. Confirm startup includes three `job.scheduled` events (one per job).
+2. Confirm startup includes `job.scheduled` events for enabled jobs.
 3. Confirm hourly `worker.heartbeat` appears.
 4. Confirm no `job.failed` appears immediately after startup.
+
+If inbound email sync is enabled:
+1. Confirm `pollInboundEmailReplies` is scheduled.
+2. Send a test resident reply to monitored mailbox.
+3. Confirm logs contain `inbound_email_ingested`.
+4. Confirm admin app conversation updates for the same thread.
 
 ## Regular Health Check
 

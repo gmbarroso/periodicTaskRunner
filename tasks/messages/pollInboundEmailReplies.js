@@ -35,6 +35,23 @@ function parsePositiveInt(name, defaultValue) {
   return parsed;
 }
 
+async function markMessageSeen(client, uid) {
+  try {
+    await client.messageFlagsAdd(uid, ['\\Seen'], { uid: true });
+    return true;
+  } catch (error) {
+    logger.warn(
+      JSON.stringify({
+        event: 'inbound_email_mark_seen_failed',
+        uid,
+        errorMessage: error?.message || 'Unknown IMAP flag update error',
+        errorCode: error?.code || null,
+      }),
+    );
+    return false;
+  }
+}
+
 async function ingestInboundReply(payload) {
   const apiBaseUrl = (process.env.API_BASE_URL || '').trim();
   const inboundSecret = (process.env.CONTACT_EMAIL_INBOUND_SECRET || '').trim();
@@ -87,7 +104,7 @@ async function pollInboundEmailReplies() {
   const imapUser = process.env.INBOUND_EMAIL_IMAP_USER.trim();
   const imapPassword = process.env.INBOUND_EMAIL_IMAP_PASSWORD.trim();
   const imapConnectTimeoutMs = parsePositiveInt('INBOUND_EMAIL_IMAP_CONNECT_TIMEOUT_MS', 30000);
-  const imapSocketTimeoutMs = parsePositiveInt('INBOUND_EMAIL_IMAP_SOCKET_TIMEOUT_MS', 45000);
+  const imapSocketTimeoutMs = parsePositiveInt('INBOUND_EMAIL_IMAP_SOCKET_TIMEOUT_MS', 120000);
   const mailbox = (process.env.INBOUND_EMAIL_IMAP_MAILBOX || 'INBOX').trim();
   const unseenOnly = boolFromEnv('INBOUND_EMAIL_UNSEEN_ONLY', true);
   const maxPerRun = Math.max(1, Number(process.env.INBOUND_EMAIL_MAX_PER_RUN || 20));
@@ -153,7 +170,7 @@ async function pollInboundEmailReplies() {
               providerMessageId: normalizedExternalMessageId,
             }),
           );
-          await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
+          await markMessageSeen(client, message.uid);
           continue;
         }
 
@@ -167,7 +184,7 @@ async function pollInboundEmailReplies() {
               providerMessageId: normalizedExternalMessageId,
             }),
           );
-          await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
+          await markMessageSeen(client, message.uid);
           continue;
         }
 
@@ -198,19 +215,24 @@ async function pollInboundEmailReplies() {
           }),
         );
 
-        await client.messageFlagsAdd(message.uid, ['\\Seen'], { uid: true });
+        await markMessageSeen(client, message.uid);
       } catch (error) {
         handleTaskError('pollInboundEmailReplies.message', error);
       }
     }
   } catch (error) {
     handleTaskError('pollInboundEmailReplies', error);
-    return null;
+    return ingestedCount;
   } finally {
     try {
-      await client.logout();
+      if (client.usable) {
+        await client.logout();
+      }
     } catch (logoutError) {
-      logger.warn(`IMAP logout warning: ${logoutError.message}`);
+      const message = logoutError?.message || 'Unknown logout error';
+      if (!String(message).includes('Connection not available')) {
+        logger.warn(`IMAP logout warning: ${message}`);
+      }
     }
   }
 

@@ -1,20 +1,13 @@
 require('dotenv').config();
 const schedule = require('node-schedule');
 const logger = require('./utils/logger');
-const { cleanRevokedTokens, cleanBookings, cleanInactiveBookings, pollInboundEmailReplies } = require('./tasks/cleanTasks');
+const { cleanRevokedTokens, cleanBookings, cleanInactiveBookings } = require('./tasks/cleanTasks');
 
 const requiredEnvVars = ['DATABASE_USER', 'DATABASE_HOST', 'DATABASE_NAME', 'DATABASE_PASSWORD', 'DATABASE_PORT'];
 const missingEnvVars = requiredEnvVars.filter((varName) => !process.env[varName]);
 if (missingEnvVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
   process.exit(1);
-}
-
-function boolFromEnv(name, defaultValue = false) {
-  const raw = process.env[name];
-  if (raw === undefined || raw === null || raw === '') return defaultValue;
-  const normalized = String(raw).trim().toLowerCase();
-  return normalized === '1' || normalized === 'true' || normalized === 'yes';
 }
 
 const JOB_DEFINITIONS = [
@@ -37,15 +30,6 @@ const JOB_DEFINITIONS = [
     description: 'Delete old inactive bookings',
   },
 ];
-
-if (boolFromEnv('INBOUND_EMAIL_ENABLED', false)) {
-  JOB_DEFINITIONS.push({
-    name: 'pollInboundEmailReplies',
-    cron: (process.env.INBOUND_EMAIL_POLL_CRON || '*/1 * * * *').trim(),
-    run: pollInboundEmailReplies,
-    description: 'Ingest resident email replies into app conversations',
-  });
-}
 
 function logStructured(level, event, payload) {
   const entry = {

@@ -12,7 +12,7 @@ This project automates periodic cleanup of PostgreSQL tables using Node.js.
 
 ## Prerequisites
 
-- Node.js (v16 or higher)
+- Node.js (v22 or higher)
 - PostgreSQL database
 - `npm`
 

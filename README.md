@@ -60,9 +60,11 @@ This project automates periodic cleanup of PostgreSQL tables using Node.js.
 ```text
 periodicTaskRunner/
 ├── tasks/
-│   ├── cleanBookings.js
-│   ├── cleanRevokedTokens.js
-│   ├── cleanInactiveBookings.js
+│   ├── bookings/
+│   │   ├── cleanBookings.js
+│   │   └── cleanInactiveBookings.js
+│   ├── revokedTokens/
+│   │   └── cleanRevokedTokens.js
 │   └── cleanTasks.js
 ├── utils/
 │   ├── db.js
